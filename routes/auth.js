@@ -362,7 +362,7 @@ router.get("/verifyemail/:id", fetchemail, async(req, res) => {
         res.sendFile(__dirname+"/verificationSuccess.html")
     } catch (error) {
         // console.error(error.message);
-        res.send("Some error occured please try after some time");
+        res.sendFile(__dirname+"/verificationFailure.html")
     }
 
 });

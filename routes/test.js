@@ -71,19 +71,9 @@ router.post("/getall",async (req,res)=>{
         let success=false;
         try{
             const language=req.body.language;
-
-            var final={
-                time15:[],
-                time30:[],
-                time60:[],
-                time120:[]
-            }
-
-            
-            let leaderboardData=await Leaderboard.find({language}).populate({path:"tests",select:"-user -_id -__v -language",sort:[{"speed":"desc","accuracy":"desc","timeOfTest":"asc"}]})        
-            leaderboardData.forEach((data)=>final[`time${data.time}`]=data.tests)
+            let leaderboardData=await Leaderboard.find({language}).populate({path:"tests",select:"-user -_id -__v -language"})        
             success=true;
-            res.json({success,final})
+            res.json({success,leaderboardData})
 
         }
         catch(error){
