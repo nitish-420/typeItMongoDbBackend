@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const Test = require("../models/Test");
+const Leaderboard=require("../models/Leaderboard")
+
 const { body, validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 
@@ -32,7 +34,8 @@ const sendEmailForVerification = async(email) => {
 		from: process.env.EMAILUSERNAME,
 		to: email,
 		subject: "Email verification of TypeIt",
-		html: `<h2>Click on <a href="http://localhost:5000/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
+		html: `<h2>Click on <a href="https://typeit-mongodb.herokuapp.com/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
+		// html: `<h2>Click on <a href="http://localhost:5000/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
 	};
 
 	return new Promise((resolve,reject)=>{
@@ -54,7 +57,7 @@ const sendNewPasswordEmail = async(email, password) => {
 		from: process.env.EMAILUSERNAME,
 		to: email,
 		subject: "New password for your typeit account",
-		html: `<p>Your new password is <b>${password}</b> , it will expire in few minutes, login with it and to change to new password visit edit options available in user section at typeit.</p>`,
+		html: `<p>Your new password is <b>${password}</b>, it will expire in few minutes, login with it and to change to new password visit edit options available in user section at typeit.</p>`,
 	};
 	return new Promise((resolve,reject)=>{
 		
@@ -101,7 +104,14 @@ router.post(
         }
 
         try {
-            let user = await User.findOne({ email: req.body.email });
+            let user = await User.findOne({ userName: req.body.userName });
+            if(user){                
+                return res.status(400).json({
+                    success,
+                    error: "User name unavailable",
+                });
+            }
+            user=await User.findOne({email:req.body.email})
             if (user && user.status !== 0) {
                 return res.status(400).json({
                     success,
@@ -123,7 +133,11 @@ router.post(
                 password: secPass,
             });
 
-            await sendEmailForVerification(req.body.email);
+            await user.save();
+
+            // await sendEmailForVerification(req.body.email);
+            // uncomment above line if needed to wait till email is send
+            sendEmailForVerification(req.body.email);
             success = true;
             res.json({ success });
         } catch (error) {
@@ -136,7 +150,10 @@ router.post(
 // Route 2 for login of a user
 router.post(
     "/login", [
-        body("email", "Enter a valid email").isEmail(),
+        body(
+            "userName",
+            "Username should have atleast length 3 and atmost length 15"
+        ).isLength({ min: 3, max: 15 }),
         body("password", "Password cannot be blank").exists(),
     ],
     async(req, res) => {
@@ -145,19 +162,20 @@ router.post(
         if (!errors.isEmpty()) {
             return res.status(400).json({ success, errors: errors.array() });
         }
-        const { email, password } = req.body;
-        const otp = otpSet[email];
+        const { userName, password } = req.body;
+        
         try {
-            let user = await User.findOne({ email });
+            let user = (await User.findOne({ userName }).select("-__v -dateOfAccountCreated").populate({path:"tests",select:"-user -_id -__v -userName"}).populate({path:"bests",select:"-user -_id -__v -userName"}))
             if (!user) {
                 return res.status(400).json({
                     success,
                     error: "Please try to login with correct credentials",
                 });
             }
-
+            const otp = otpSet[user.email];
             if (user.status === 0) {
-                await sendEmailForVerification(email);
+                // await sendEmailForVerification(user.email);
+                sendEmailForVerification(user.email);
                 return res.status(400).json({
                     success,
                     error: "Please verify your account first and then login, email has been sent again, check you spam box also in case you don't find it",
@@ -194,9 +212,10 @@ router.post(
 
             const authtoken = jwt.sign(data, JWT_SECRET);
             success = true;
+            
             res.json({ success, authtoken, user });
         } catch (error) {
-            // console.error(error.message);
+            console.error(error.message);
             res.status(500).send("Internal Server error occured");
         }
     }
@@ -207,8 +226,7 @@ router.post("/getuser", fetchuser, async(req, res) => {
     let success = false;
     try {
         let userId = req.user.id;
-        const user = await User.findById(userId).select("-password");
-
+        let user = await User.findById(userId).select(" -__v -dateOfAccountCreated").populate({path:"tests",select:"-user -_id -__v -userName"}).populate({path:"bests",select:"-user -_id -__v -userName"})
         success = true;
         res.send({ success, user });
     } catch (error) {
@@ -272,11 +290,15 @@ router.post(
                 fName,
                 lName,
             });
+            await Test.updateMany({_id:{$in: user.bests}},{userName:userName})
             success = true;
-            res.send({ success });
+            res.send({success});
         } catch (error) {
-            // console.error(error.message);
-            res.status(500).send("Inter Server error occured");
+            // console.error(error);
+            if(error.codeName==="DuplicateKey"){
+                return res.status(500).send({success,error:"User name is not available"});
+            }
+            return res.status(500).send({success,error:"Inter Server error occured"});
         }
     }
 );
@@ -333,10 +355,11 @@ router.post(
 router.get("/verifyemail/:id", fetchemail, async(req, res) => {
     try {
         const { email } = req;
-        let user = await User.findOneAndUpdate(email, { status: 1 }, { new: true });
+        let user=await User.findOneAndUpdate({email}, {status:1});
         success = true;
         // res.redirect("https://type--it.herokuapp.com/login")
-        res.send("done perfectly");
+        // res.send("done perfectly");
+        res.sendFile(__dirname+"/verificationSuccess.html")
     } catch (error) {
         // console.error(error.message);
         res.send("Some error occured please try after some time");
@@ -371,6 +394,7 @@ router.post(
             if (!passwordCompare) {
                 return res.status(400).json({ success, error: "Something went wrong" });
             }
+            await Leaderboard.updateMany({},{$pull :{"tests" :{$in :user.bests}}})
             await Test.deleteMany({ user: userId });
             await User.findByIdAndDelete(userId);
 
@@ -409,7 +433,8 @@ router.post(
             const salt = await bcrypt.genSalt(10);
             const secPass = await bcrypt.hash(newPassword, salt);
 
-            await sendNewPasswordEmail(req.body.email, newPassword);
+            sendNewPasswordEmail(req.body.email, newPassword);
+            // await sendNewPasswordEmail(req.body.email, newPassword);
 			
             otpSet[email] = secPass;
             deleteOtpAfterGivenTime(email);

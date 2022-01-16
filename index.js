@@ -17,7 +17,7 @@ app.use(express.json())
 
 // routes here 
 app.use('/api/auth',require("./routes/auth"))
-// app.use('/api/test',require("./routes/test"))
+app.use('/api/test',require("./routes/test"))
 
 app.get('/',(req,res)=>{
     res.send("Working correctly");

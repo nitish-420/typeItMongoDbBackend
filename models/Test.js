@@ -5,6 +5,10 @@ const TestSchema=new mongoose.Schema({
         type:mongoose.Schema.Types.ObjectId,
         ref:'user'
     },
+    userName:{
+        type:String,
+        required:true
+    },
     language:{
         type:String,
         required:true
