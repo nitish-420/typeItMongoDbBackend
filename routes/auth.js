@@ -13,9 +13,18 @@ const JWT_SECRET = process.env.SECRET;
 const fetchuser = require("../middleware/fetchUser");
 const fetchemail = require("../middleware/fetchEmail");
 
-const transporter = require("../nodeMailer");
 var passwordGenerator = require("generate-password");
 var otpSet = {};
+
+const nodemailer=require('nodemailer')
+
+const {google}=require('googleapis')
+
+
+const oAuth2Client=new google.auth.OAuth2(process.env.CLIENT_ID,process.env.CLIENT_SECRET,process.env.REDIRECT_URL)
+
+oAuth2Client.setCredentials({refresh_token:process.env.REFRESH_TOKEN})
+
 
 const sendEmailForVerification = async(email) => {
 
@@ -30,46 +39,68 @@ const sendEmailForVerification = async(email) => {
 	};
 	emailHash = jwt.sign(emailData, JWT_SECRET);
 
-	const options = {
-		from: process.env.EMAILUSERNAME,
-		to: email,
-		subject: "Email verification of TypeIt",
-		html: `<h2>Click on <a href="https://typeit-mongodb.herokuapp.com/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
-		// html: `<h2>Click on <a href="http://localhost:5000/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
-	};
+    try{
+        const accessToken=await oAuth2Client.getAccessToken()
 
-	return new Promise((resolve,reject)=>{
-		
-		transporter.sendMail(options, function(err, info) {
-			if (err) {
-				// console.log(err);
-				resolve(false);
-			}
-			// console.log("Sent : "+info.response);
-			resolve(true)
-		});
-		return;
-	})
+        const transporter=nodemailer.createTransport({
+            service:"gmail",
+            auth:{
+                type:"OAuth2",
+                user:process.env.EMAILUSERNAME,
+                clientId:process.env.CLIENT_ID,
+                clientSecret:process.env.CLIENT_SECRET,
+                refreshToken:process.env.REFRESH_TOKEN,
+                accessToken:accessToken
+        
+            }
+        });
+        const options = {
+            from: "TeamTypeIt",
+            to: email,
+            subject: "Email verification of TypeIt",
+            html: `<h2>Click on <a href="https://typeit-mongodb.herokuapp.com/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
+            // html: `<h2>Click on <a href="http://localhost:5000/api/auth/verifyemail/${emailHash}">this</a> link to verify your account</h2>`,
+        };
+
+        const result=await transporter.sendMail(options)
+        return result
+    }
+    catch(e){
+        return e
+    }
 };
 
 const sendNewPasswordEmail = async(email, password) => {
-	const options = {
-		from: process.env.EMAILUSERNAME,
-		to: email,
-		subject: "New password for your typeit account",
-		html: `<p>Your new password is <b>${password}</b>, it will expire in few minutes, login with it and to change to new password visit edit options available in user section at typeit.</p>`,
-	};
-	return new Promise((resolve,reject)=>{
-		
-		transporter.sendMail(options, function(err, info) {
-			if (err) {
-				// console.log(err);
-				resolve(false)
-			}
-			// console.log("Sent : "+info.response);
-			resolve(true)
-		});
-	})
+
+    try{
+        const accessToken=await oAuth2Client.getAccessToken()
+
+        const transporter=nodemailer.createTransport({
+            service:"gmail",
+            auth:{
+                type:"OAuth2",
+                user:process.env.EMAILUSERNAME,
+                clientId:process.env.CLIENT_ID,
+                clientSecret:process.env.CLIENT_SECRET,
+                refreshToken:process.env.REFRESH_TOKEN,
+                accessToken:accessToken
+        
+            }
+        });
+        const options = {
+            from: "TeamTypeIt",
+            to: email,
+            subject: "New password for your typeit account",
+            text:`Your new password is ${password}, it will expire in few minutes, login with it and to change to new password visit edit options available in user section at typeit.`,
+            html: `<p>Your new password is <b>${password}</b>, it will expire in few minutes, login with it and to change to new password visit edit options available in user section at typeit.</p>`,
+        };
+
+        const result=await transporter.sendMail(options)
+        return result
+    }
+    catch(e){
+        return e
+    }
 };
 
 const deleteOtpAfterGivenTime = (email) => {
@@ -137,7 +168,7 @@ router.post(
 
             // await sendEmailForVerification(req.body.email);
             // uncomment above line if needed to wait till email is send
-            sendEmailForVerification(req.body.email);
+            await sendEmailForVerification(req.body.email);
             success = true;
             res.json({ success });
         } catch (error) {
@@ -175,7 +206,7 @@ router.post(
             const otp = otpSet[user.email];
             if (user.status === 0) {
                 // await sendEmailForVerification(user.email);
-                sendEmailForVerification(user.email);
+                await sendEmailForVerification(user.email);
                 return res.status(400).json({
                     success,
                     error: "Please verify your account first and then login, email has been sent again, check you spam box also in case you don't find it",
@@ -433,7 +464,7 @@ router.post(
             const salt = await bcrypt.genSalt(10);
             const secPass = await bcrypt.hash(newPassword, salt);
 
-            sendNewPasswordEmail(req.body.email, newPassword);
+            await sendNewPasswordEmail(req.body.email, newPassword);
             // await sendNewPasswordEmail(req.body.email, newPassword);
 			
             otpSet[email] = secPass;
