@@ -66,7 +66,7 @@ const sendEmailForVerification = async(email) => {
         return result
     }
     catch(e){
-        return e
+        throw e
     }
 };
 
@@ -96,10 +96,12 @@ const sendNewPasswordEmail = async(email, password) => {
         };
 
         const result=await transporter.sendMail(options)
+        
         return result
     }
     catch(e){
-        return e
+        console.log(e)
+        throw e
     }
 };
 
@@ -456,7 +458,6 @@ router.post(
             var newPassword = await passwordGenerator.generate({
                 length: 14,
                 numbers: true,
-                symbols: true,
                 strict: true,
                 excludeSimilarCharacters: true,
             });
